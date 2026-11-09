@@ -1,2 +1,6 @@
 class UserNotFoundError(Exception):
     ...
+
+
+class UserEmailAlreadyExistsError(Exception):
+    ...

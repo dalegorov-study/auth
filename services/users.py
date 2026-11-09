@@ -14,13 +14,8 @@ class UserService:
         return await self.user_repo.create(**values)
 
 
-    async def login(self, name: str, password: str) -> UserModel:
-        user = await self.user_repo.get_by_name_and_password(name, password)
-
-        if not user:
-            raise ValueError("Incorrect name or password")
-        
-        return user
+    async def login(self, email: str, password: str) -> UserModel:
+        return await self.user_repo.get_by_email_and_password(email, password)
     
 
     async def get(self, user_id: int) -> UserModel:
