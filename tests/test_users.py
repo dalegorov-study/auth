@@ -4,6 +4,8 @@ from fastapi.testclient import TestClient
 from main import app
 from http import HTTPStatus
 
+pytestmark = pytest.mark.integration
+
 PASSWORD = 'qwerty'
 
 
@@ -100,7 +102,7 @@ def test_login_user(
     some_user: Mapping[str, Any]
 ):
     login_response = app_client.post(f'/login', json=dict(
-        name=some_user['name'],
+        email=some_user['email'],
         password=PASSWORD,
     ))
     assert login_response.status_code == HTTPStatus.OK
@@ -127,6 +129,40 @@ def test_get_current_user(
 
     get_user = get_response.json()
     assert get_user['id'] == some_user['id']
+
+
+@pytest.mark.parametrize('name', ['Иванов И.И.'])
+@pytest.mark.parametrize('password', [PASSWORD])
+def test_duplicate_email_returns_conflict(app_client: TestClient, some_user: Mapping[str, Any]):
+    response = app_client.post('/users/', json={
+        'name': 'Другой пользователь',
+        'password': 'another-password',
+        'email': some_user['email'],
+    })
+    assert response.status_code == HTTPStatus.CONFLICT
+    assert response.json()['detail'] == 'Пользователь с таким email уже существует'
+
+    original = app_client.get(f'/users/{some_user["id"]}')
+    assert original.status_code == HTTPStatus.OK
+    assert original.json() == some_user
+
+
+@pytest.mark.parametrize('name', ['Иванов И.И.'])
+@pytest.mark.parametrize('password', [PASSWORD])
+@pytest.mark.parametrize('invalid_field', ['email', 'password'])
+def test_login_invalid_credentials(
+    app_client: TestClient, some_user: Mapping[str, Any], invalid_field: str,
+):
+    credentials = {'email': some_user['email'], 'password': PASSWORD}
+    credentials[invalid_field] = 'invalid'
+    response = app_client.post('/login', json=credentials)
+    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert 'x-user-id' not in response.cookies
+
+
+def test_login_requires_email(app_client: TestClient):
+    response = app_client.post('/login', json={'name': 'someone', 'password': PASSWORD})
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
 def test_user_ids_are_not_reused_after_deletion(app_client: TestClient):

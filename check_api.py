@@ -51,7 +51,7 @@ def main():
         print('\n=== 5. LOGIN: вход и сохранение cookie ===')
         check_response(session.post(
             f'{base_url}/login',
-            json={'name': name, 'password': password},
+            json={'email': user['email'], 'password': password},
             timeout=TIMEOUT,
         ), 200)
         if session.cookies.get('x-user-id') != str(user_id):

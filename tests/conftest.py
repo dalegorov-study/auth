@@ -6,6 +6,11 @@ from http import HTTPStatus
 
 
 @pytest.fixture
+def anyio_backend():
+    return 'asyncio'
+
+
+@pytest.fixture
 def app_client() -> Generator[TestClient, None, None]:
     return TestClient(app)
 

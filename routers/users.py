@@ -3,7 +3,7 @@ from typing import Sequence
 from pydantic import BaseModel
 from models.users import UserModel
 from dependencies import UserServiceDepend
-from errors import UserNotFoundError
+from errors import UserNotFoundError, UserEmailAlreadyExistsError
 
 
 class CreateUserInDto(BaseModel):
@@ -13,13 +13,14 @@ class CreateUserInDto(BaseModel):
 
 
 class LoginUserInDto(BaseModel):
-    name: str
+    email: str
     password: str
 
 
 
 router = APIRouter()
 root_router = APIRouter()
+
 
 def _get_user_id_from_cookie(request: Request) -> int:
     try:
@@ -38,7 +39,13 @@ async def get_many(user_service: UserServiceDepend) -> Sequence[UserModel]:
 
 @router.post('/', status_code=status.HTTP_201_CREATED)
 async def register(data: CreateUserInDto, user_service: UserServiceDepend) -> UserModel:
-    return await user_service.register(dict(data))
+    try:
+        return await user_service.register(dict(data))
+    except UserEmailAlreadyExistsError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Пользователь с таким email уже существует',
+        )
 
 
 @router.get('/{user_id}')
@@ -105,7 +112,7 @@ async def login(
     user_service: UserServiceDepend,
 ) -> UserModel:
     try:
-        user = await user_service.login(dto.name, dto.password)
+        user = await user_service.login(dto.email, dto.password)
 
         response.set_cookie(
             key="x-user-id",
