@@ -1,0 +1,7 @@
+pytest>=8
+pytest-asyncio
+aiohttp>=3.10
+requests>=2.32
+ruff
+mypy
+types-requests
