@@ -2,18 +2,57 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_DB: hw
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${PGDATABASE:?Укажите PGDATABASE в .env}
+      POSTGRES_USER: ${PGUSER:?Укажите PGUSER в .env}
+      POSTGRES_PASSWORD: ${PGPASSWORD:?Укажите PGPASSWORD в .env}
     ports:
-      - "5435:5432"
+      - "${PGPORT:?Укажите PGPORT в .env}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d hw"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 2s
       timeout: 5s
       retries: 15
 
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?Укажите MONGO_USER в .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Укажите MONGO_PASSWORD в .env}
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "127.0.0.1:${MONGO_PORT:?Укажите MONGO_PORT в .env}:27017"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --host 127.0.0.1
+          --username "$${MONGO_INITDB_ROOT_USERNAME}"
+          --password "$${MONGO_INITDB_ROOT_PASSWORD}"
+          --authenticationDatabase admin
+          --eval "quit(db.adminCommand('ping').ok ? 0 : 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  mongo-express:
+    image: mongo-express:1.0.2
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${MONGO_EXPRESS_PORT:?Укажите MONGO_EXPRESS_PORT в .env}:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/?authSource=${MONGO_AUTH_DATABASE:?Укажите MONGO_AUTH_DATABASE в .env}
+      ME_CONFIG_BASICAUTH: "true"
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USER:?Укажите MONGO_EXPRESS_USER в .env}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:?Укажите MONGO_EXPRESS_PASSWORD в .env}
+
 volumes:
   pg_data:
+  mongo_data:

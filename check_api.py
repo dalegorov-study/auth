@@ -59,7 +59,7 @@ def main():
 
         print('\n=== 6. READ: получение текущего пользователя по cookie ===')
         current_user = check_response(
-            session.get(f'{base_url}/users/current/', timeout=TIMEOUT), 200,
+            session.get(f'{base_url}/profile/', timeout=TIMEOUT), 200,
         )
         if current_user['id'] != user_id:
             raise RuntimeError('Сервис вернул другого текущего пользователя')
@@ -85,7 +85,7 @@ def main():
         print('\n=== 11. AUTH: некорректная cookie, ожидаем 401 ===')
         session.cookies.clear()
         session.cookies.set('x-user-id', 'not-an-integer')
-        check_response(session.get(f'{base_url}/users/current/', timeout=TIMEOUT), 401)
+        check_response(session.get(f'{base_url}/profile/', timeout=TIMEOUT), 401)
 
     print('\nВсе 11 запросов выполнены с ожидаемыми статусами.')
 

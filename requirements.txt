@@ -8,3 +8,5 @@ requests==2.34.2
 asyncpg
 psycopg2-binary
 yandex-pgmigrate
+pymongo==4.20.0
+python-dotenv[cli]==1.2.4
