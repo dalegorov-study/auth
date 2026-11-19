@@ -111,18 +111,18 @@ def test_login_user(
     logged_user = login_response.json()
     assert logged_user['id'] == some_user['id']
 
-    current_response = app_client.get('/users/current/')
-    assert current_response.status_code == HTTPStatus.OK
-    assert current_response.json()['id'] == some_user['id']
+    profile_response = app_client.get('/profile/')
+    assert profile_response.status_code == HTTPStatus.OK
+    assert profile_response.json()['id'] == some_user['id']
 
 
 @pytest.mark.parametrize('name', ['Иванов И.И.'])
 @pytest.mark.parametrize('password', [PASSWORD])
-def test_get_current_user(
+def test_get_profile(
     app_client: TestClient,
     some_user: Mapping[str, Any]
 ):
-    get_response = app_client.get(f'/users/current/', cookies={
+    get_response = app_client.get('/profile/', cookies={
         'x-user-id': str(some_user['id']),
     })
     assert get_response.status_code == HTTPStatus.OK
@@ -207,18 +207,24 @@ def test_user_ids_are_not_reused_after_deletion(app_client: TestClient):
             )
 
 
+@pytest.mark.parametrize('name', ['Иванов И.И.'])
+@pytest.mark.parametrize('password', [PASSWORD])
 @pytest.mark.parametrize(('method', 'path'), [
     ('GET', '/users/not-an-integer'),
     ('PATCH', '/users/deactivate/not-an-integer'),
     ('DELETE', '/users/not-an-integer'),
 ])
-def test_invalid_user_id_in_path(app_client: TestClient, method: str, path: str):
-    response = app_client.request(method, path)
+def test_invalid_user_id_in_path(
+    app_client: TestClient, some_user: Mapping[str, Any], method: str, path: str,
+):
+    response = app_client.request(
+        method, path, headers={'Cookie': f'x-user-id={some_user["id"]}'},
+    )
     assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
 @pytest.mark.parametrize(('method', 'path'), [
-    ('GET', '/users/current/'),
+    ('GET', '/profile/'),
     ('PATCH', '/users/deactivate/1'),
     ('DELETE', '/users/1'),
 ])
@@ -233,7 +239,7 @@ def test_invalid_user_id_in_cookie(
 
 @pytest.mark.parametrize(('method', 'path'), [
     ('GET', '/users/0'),
-    ('GET', '/users/current/'),
+    ('GET', '/profile/'),
     ('PATCH', '/users/deactivate/0'),
     ('DELETE', '/users/0'),
 ])

@@ -1,8 +1,12 @@
-from fastapi import APIRouter, HTTPException, status, Response, Request
+from fastapi import APIRouter, HTTPException, status, Response
 from typing import Sequence
 from pydantic import BaseModel
 from models.users import UserModel
-from dependencies import UserServiceDepend
+from dependencies import (
+    UserServiceDepend,
+    UserManagementServiceDepend,
+    CurrentUserDepend,
+)
 from errors import UserNotFoundError, UserEmailAlreadyExistsError
 
 
@@ -17,19 +21,8 @@ class LoginUserInDto(BaseModel):
     password: str
 
 
-
 router = APIRouter()
 root_router = APIRouter()
-
-
-def _get_user_id_from_cookie(request: Request) -> int:
-    try:
-        return int(request.cookies.get('x-user-id', ''))
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail='Unauthorized',
-        )
 
 
 @router.get('/', status_code=status.HTTP_200_OK)
@@ -58,22 +51,14 @@ async def get(user_id: int, user_service: UserServiceDepend) -> UserModel:
             detail=f'Пользователь {user_id} не найден',
         )
 
-@router.get('/current/')
-async def get_current(request: Request, user_service: UserServiceDepend) -> UserModel:
-    user_id = _get_user_id_from_cookie(request)
-
-    try:
-        return await user_service.get(user_id)
-    except UserNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f'Пользователь {user_id} не найден',
-        )
-
 
 @router.patch('/deactivate/{user_id}')
-async def deactivate(user_id: int, request: Request, user_service: UserServiceDepend) -> UserModel:
-    if user_id != _get_user_id_from_cookie(request):
+async def deactivate(
+    user_id: int,
+    current_user: CurrentUserDepend,
+    user_service: UserServiceDepend,
+) -> UserModel:
+    if user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail='Можно изменять только своего пользователя',
@@ -89,15 +74,19 @@ async def deactivate(user_id: int, request: Request, user_service: UserServiceDe
 
 
 @router.delete('/{user_id}')
-async def delete(user_id: int, request: Request, user_service: UserServiceDepend) -> UserModel:
-    if user_id != _get_user_id_from_cookie(request):
+async def delete(
+    user_id: int,
+    current_user: CurrentUserDepend,
+    user_management_service: UserManagementServiceDepend,
+) -> UserModel:
+    if user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail='Можно удалять только своего пользователя',
         )
 
     try:
-        return await user_service.delete(user_id)
+        return await user_management_service.delete(current_user)
     except UserNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

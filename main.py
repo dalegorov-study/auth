@@ -1,11 +1,22 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
+from clients.minio import ensure_minio_bucket
+from routers.profile import router as profile_router
 from routers.users import router as user_router, root_router
 import uvicorn
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    await ensure_minio_bucket()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 logger = logging.getLogger(__name__)
 
 
@@ -27,6 +38,7 @@ async def handle_unexpected_error(request: Request, exc: Exception) -> JSONRespo
 async def root():
     return {'message': 'Hello World'}
 
+app.include_router(profile_router, prefix='/profile')
 app.include_router(user_router, prefix='/users')
 app.include_router(root_router)
 
