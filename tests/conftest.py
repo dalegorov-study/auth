@@ -1,4 +1,5 @@
 from typing import Any, Mapping, Generator
+from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from main import app
@@ -21,10 +22,11 @@ def some_user(
     name: str,
     password: str,
 ) -> Generator[Mapping[str, Any], None, None]:
+    email_prefix = name.lower().replace('.', '_').replace(' ', '_')
     create_response = app_client.post('/users', json=dict(
         name=name,
         password=password,
-        email=f'{name.lower().replace(".", "_").replace(" ", "_")}@example.com'
+        email=f'{email_prefix}-{uuid4().hex[:10]}@example.com'
     ))
     created_user = create_response.json()
 
