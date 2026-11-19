@@ -17,7 +17,9 @@ python -m pip install -r requirements.txt
 
 В `.env` хранятся параметры PostgreSQL (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`),
 MongoDB (`MONGO_HOST`, `MONGO_PORT`, `MONGO_DATABASE`, `MONGO_USER`, `MONGO_PASSWORD`, `MONGO_AUTH_DATABASE`)
-и веб-интерфейса (`MONGO_EXPRESS_PORT`, `MONGO_EXPRESS_USER`, `MONGO_EXPRESS_PASSWORD`).
+и его веб-интерфейса (`MONGO_EXPRESS_PORT`, `MONGO_EXPRESS_USER`, `MONGO_EXPRESS_PASSWORD`).
+Настройки MinIO используют переменные `MINIO_HOST`, `MINIO_PORT`, `MINIO_ROOT_USER`,
+`MINIO_ROOT_PASSWORD`, `MINIO_BUCKET` и `MINIO_UI_PORT`.
 Имена `PG*` стандартны для PostgreSQL, поэтому те же значения используются в миграциях.
 
 Compose автоматически читает `.env`, Python-клиенты загружают его через `settings.py`.
@@ -48,18 +50,30 @@ docker compose up -d --wait mongo mongo-express
 Порты MongoDB и веб-интерфейса доступны только на локальном компьютере. Данные сохраняются в Docker volume `mongo_data`.
 Учётные записи баз создаются при первом запуске с пустыми volumes; изменение пароля в `.env` не меняет пароль в существующей БД.
 
-Для запуска PostgreSQL, MongoDB и веб-интерфейса одной командой:
-
-```sh
-docker compose up -d --wait
-```
-
 Python-сервис запускается локально, как описано ниже. Клиент MongoDB использует базу из `MONGO_DATABASE`, профили хранятся в коллекции `user_profiles`.
 Доступные коллекции описаны протоколом `MongoDatabase` в `clients/mongo.py`.
 Коллекция `user_profiles` имеет тип `AsyncCollection[UserProfileDocument]`; поля документа описаны через `TypedDict` рядом с протоколом в `clients/mongo.py`.
 
 Для локального окружения используется MongoDB 7.0: MongoDB 8.0 отказывается запускаться с ядром текущей Docker VM `7.0.0-22-generic`
 из-за [известной несовместимости TCMalloc с ядрами Linux 6.19–7.0.13](https://jira.mongodb.org/browse/SERVER-121912).
+
+## MinIO и веб-интерфейс
+
+Запустите MinIO и S3 Manager:
+
+```sh
+docker compose up -d --wait minio minio-ui
+```
+
+При первом запуске Docker собирает MinIO `RELEASE.2025-10-15T17-29-55Z` из исходников по `docker/minio/Dockerfile`.
+Сборка скачивает зависимости Go и может занять несколько минут. Для повторной сборки используйте `docker compose build minio`.
+
+S3 API доступен локально на `http://localhost:9000`, S3 Manager — на `http://localhost:9001`.
+В сети Compose веб-интерфейс подключается к `minio:9000` с учебной парой `admin` / `admin123` из `.env`.
+Приложение при старте проверяет бакет из `MINIO_BUCKET` и создаёт его при необходимости. Значение по умолчанию — `profile-files`.
+Данные MinIO сохраняются в Docker volume `minio_data`.
+
+Для запуска всех сервисов используйте `docker compose up -d --wait`.
 
 ## Миграции
 
@@ -82,7 +96,7 @@ dotenv run --no-override -- pgmigrate -d db info
 
 ## Тесты
 
-При активированном `.venv`, запущенных PostgreSQL и MongoDB и применённых миграциях:
+При активированном `.venv`, запущенных PostgreSQL, MongoDB и MinIO и применённых миграциях:
 
 ```sh
 python -m pytest
@@ -101,6 +115,7 @@ HTTP-тесты (`tests/test_users.py`) пока ожидают пустую т�
 Тестовые пользователи HTTP-тестов удаляются при завершении тестов.
 Отдельно запускать HTTP-сервис для тестов не нужно.
 Тесты профиля (`tests/test_profiles.py`) проверяют создание, чтение, полную замену полей, удаление вместе с аккаунтом и ошибки HTTP-ручек с настоящими PostgreSQL и MongoDB.
+Тесты файлов (`tests/test_user_files.py`) проверяют сохранение JSON в MinIO, обработку дубликатов, список файлов пользователя и удаление.
 Тест в `tests/test_errors.py` проверяет, что ошибка удаления профиля не приводит к удалению аккаунта.
 
 ## Расширенный профиль пользователя
@@ -157,9 +172,33 @@ MongoDB-типы используются только внутри сторад
 Без корректной cookie ручки возвращают `401`, без обязательного поля в `PUT` — `422`.
 Для неактивного пользователя (`is_active=False`) чтение и сохранение расширенного профиля возвращают `403` с сообщением «Пользователь неактивен».
 
+## JSON-файлы пользователя
+
+`POST /profile/files` принимает имя `filename` и значение JSON `data`. В MinIO записывается значение `data` с типом `application/json`.
+Успешное создание возвращает `201` с `filename` и `object_key`. Если имя уже занято, возвращается `409`.
+`GET /profile/files` возвращает массив имён файлов текущего пользователя.
+`DELETE /profile/files/{filename}` возвращает `204`, в том числе если файла уже нет.
+Передавайте имя файла без пути. Для неактивного аккаунта все три операции возвращают `403`.
+
+Подставьте ID своего активного пользователя вместо `123`:
+
+```sh
+curl -X POST --cookie 'x-user-id=123' \
+  -H 'Content-Type: application/json' \
+  --data '{"filename":"settings.json","data":{"theme":"dark"}}' \
+  http://localhost:8003/profile/files
+
+curl --cookie 'x-user-id=123' http://localhost:8003/profile/files
+
+curl -X DELETE --cookie 'x-user-id=123' http://localhost:8003/profile/files/settings.json
+```
+
+В S3 Manager откройте бакет `profile-files` и папку `user/123`. Ключ объекта имеет вид `user/{user_id}/{filename}`.
+MinIO проверяет условие `If-None-Match: *` при записи. При конфликте сторадж поднимает `FileAlreadyExistsError`.
+
 ## Сервис
 
-При активированном `.venv`, запущенной БД и применённых миграциях запустить сервис на http://localhost:8003:
+При активированном `.venv`, запущенных базах и MinIO и применённых миграциях запустить сервис на http://localhost:8003:
 
 ```sh
 python main.py
@@ -171,4 +210,4 @@ python main.py
 docker compose down
 ```
 
-Данные PostgreSQL и MongoDB в volumes сохраняются и будут доступны после следующего `docker compose up -d --wait`.
+Данные PostgreSQL, MongoDB и MinIO в volumes сохраняются и будут доступны после следующего `docker compose up -d --wait`.

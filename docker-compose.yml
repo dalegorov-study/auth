@@ -53,6 +53,39 @@ services:
       ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USER:?Укажите MONGO_EXPRESS_USER в .env}
       ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:?Укажите MONGO_EXPRESS_PASSWORD в .env}
 
+  minio:
+    build: ./docker/minio
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Укажите MINIO_ROOT_USER в .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Укажите MINIO_ROOT_PASSWORD в .env}
+    ports:
+      - "127.0.0.1:${MINIO_PORT:?Укажите MINIO_PORT в .env}:9000"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  minio-ui:
+    image: cloudlena/s3manager:v0.13.0
+    depends_on:
+      minio:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${MINIO_UI_PORT:?Укажите MINIO_UI_PORT в .env}:8080"
+    environment:
+      ENDPOINT: minio:9000
+      USE_SSL: "false"
+      REGION: us-east-1
+      BUCKET_LOOKUP: Path
+      ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      PRESIGN_URL: http://${MINIO_HOST}:${MINIO_PORT}
+
 volumes:
   pg_data:
   mongo_data:
+  minio_data:

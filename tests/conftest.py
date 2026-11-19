@@ -13,7 +13,8 @@ def anyio_backend():
 
 @pytest.fixture
 def app_client() -> Generator[TestClient, None, None]:
-    return TestClient(app)
+    with TestClient(app) as client:
+        yield client
 
 
 @pytest.fixture(scope='function')
